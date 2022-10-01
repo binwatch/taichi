@@ -35,10 +35,16 @@ vel = ti.Vector.field(2, ti.f32, N)
 force = ti.Vector.field(2, ti.f32, N)
 pos_backup = ti.Vector.field(2, ti.f32, N)
 
+# black hole
+blackhole_pos = ti.Vector.field(2, ti.f32, ())
+# M >= c^2|r|/G for a black hole, try larger mass
+M = 3e6 
+
 # ------ Computation ------
 @ti.kernel
 def initialize():
     center = ti.Vector([0.5, 0.5])
+    blackhole_pos[None] = ti.Vector([-1.0, -1.0])
     for i in range(N):
         theta = ti.random() * 2 * PI
         r = (ti.sqrt(ti.random()) * 0.7 + 0.3) * galaxy_size
@@ -47,6 +53,7 @@ def initialize():
         vel[i] = [-offset.y, offset.x]
         vel[i] *= init_vel
 
+#@ti.kernel
 @ti.func
 def compute_force():
     # clear force
@@ -66,6 +73,16 @@ def compute_force():
 
                 # assign to each particle
                 force[i] += f
+        # if balck hole exists
+        if blackhole_pos[None][0] > 0.0:
+            diff = p - blackhole_pos[None]
+            r = diff.norm(1e-5)
+
+            # gravitational force -(GMm/r^2) * diff/r
+            f = -G * M * m * (1.0/r)**3 * diff
+
+            # assign to each particle
+            force[i] += f
 
 @ti.kernel
 def update():
@@ -87,6 +104,7 @@ def update():
         vel[i] += dt_half*force[i]/m
         pos_backup[i] += dt*vel[i]
         pos[i] = pos_backup[i]
+    blackhole_pos[None] = ti.Vector([-1.0, -1.0])
   
 # ------ Visualization ------
 gui = ti.GUI('N-body problem', (512, 512))
@@ -95,6 +113,8 @@ initialize()
 while gui.running:
 
     for i in range(substepping):
+        if gui.get_event(ti.GUI.PRESS, ti.GUI.LMB):
+            blackhole_pos[None] = gui.get_cursor_pos()
         update()
 
     gui.clear(0x112F41)
